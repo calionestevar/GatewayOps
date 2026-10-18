@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: gateway-ops-app
+    newName: ghcr.io/calionestevar/gateway-ops-app
+    newTag: placeholder   # overwritten by prometheus-launch.yml
