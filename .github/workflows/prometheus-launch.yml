@@ -1,7 +1,7 @@
 # prometheus-launch.yml
 # X-303 Prometheus = Earth's flagship on its maiden launch.
-# Deploys the image to an ephemeral Kind cluster via Kustomize,
-# then runs SGC smoke tests before the wormhole closes.
+# Pulls the verified image from GHCR, deploys to an ephemeral Kind
+# cluster, and runs SGC smoke tests before the wormhole closes.
 
 name: Prometheus Launch
 
@@ -11,30 +11,33 @@ on:
     types: [completed]
     branches: [main]
 
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/gateway-ops-app
+
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   prometheus-launch:
     name: Prometheus Launch (maiden voyage)
     # Only launch if the build succeeded - the Iris stays closed otherwise
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          name: gateway-ops-image-${{ github.event.workflow_run.run_number }}
-          path: ./artifact
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Load image into local registry
-        run: |
-          gunzip ./artifact/gateway-ops-ci-${{ github.event.workflow_run.run_number }}.tar.gz
-          docker load -i ./artifact/gateway-ops-ci-${{ github.event.workflow_run.run_number }}.tar
-          docker images | grep gateway-ops
+      - name: Pull verified image
+        run: docker pull ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }}
 
       - name: Create ephemeral cluster (Atlantis rises)
         uses: helm/kind-action@v1
@@ -44,85 +47,30 @@ jobs:
 
       - name: Load image into Kind
         run: |
-          kind load docker-image gateway-ops-app:ci-${{ github.event.workflow_run.run_number }} \
-            --name gateway-ops-ci
+          kind load docker-image ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }} --name gateway-ops-ci
 
       - name: Patch image tag for CI deploy
         run: |
-          # Point the deployment at this run's image tag
           cd k8s
-          kustomize edit set image gateway-ops-app=gateway-ops-app:ci-${{ github.event.workflow_run.run_number }} || \
-          sed -i "s|image: gateway-ops-app:.*|image: gateway-ops-app:ci-${{ github.event.workflow_run.run_number }}|" gate-deployment.yaml
+          kustomize edit set image gateway-ops-app=${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }} || \
+          sed -i "s|image: .*|image: ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }}|" gate-deployment.yaml
 
       - name: Launch through the gate (deploy via Kustomize)
         run: |
           kubectl apply -k k8s/
           kubectl rollout status deployment/gate-deployment -n sgc --timeout=120s
 
-      - name: SGC Smoke Tests
+      - name: SGC Smoke Tests (shared suite - same as local)
         run: |
           kubectl port-forward svc/gate-service 8080:80 -n sgc &
           PORT_FORWARD_PID=$!
           sleep 5
-
-          FAILURES=0
-
-          # Test 1: Health endpoint
-          if curl -sf http://localhost:8080/health | grep -q '"status": "healthy"'; then
-            echo "PASS: health endpoint responsive"
-          else
-            echo "FAIL: health endpoint not responsive"; FAILURES=1
-          fi
-
-          # Test 2: Comtrya handshake (Altairan greeting from ConfigMap)
-          if curl -sf http://localhost:8080/ | grep -q '"greeting": "Comtrya!"'; then
-            echo "PASS: Comtrya handshake verified"
-          else
-            echo "FAIL: greeting missing - check dhd-config ConfigMap wiring"; FAILURES=1
-          fi
-
-          # Test 3: Build provenance survived deployment
-          VERSION_RESPONSE=$(curl -sf http://localhost:8080/version)
-          echo "$VERSION_RESPONSE" | jq .
-          BUILD_NUM=$(echo "$VERSION_RESPONSE" | jq -r '.build_number')
-          if [ -n "$BUILD_NUM" ] && [ "$BUILD_NUM" != "local" ]; then
-            echo "PASS: provenance present (build $BUILD_NUM)"
-          else
-            echo "FAIL: provenance lost in deployment"; FAILURES=1
-          fi
-
-          # Test 4: User-Agent instrumentation format
-          UA=$(echo "$VERSION_RESPONSE" | jq -r '.user_agent')
-          if echo "$UA" | grep -qE '^gateway-ops/[0-9]+ \([0-9a-f]{40}\)$'; then
-            echo "PASS: User-Agent format matches DataDog instrumentation pattern"
-          else
-            echo "FAIL: User-Agent malformed: $UA"; FAILURES=1
-          fi
-
-          # Test 5: Correlation-ID propagation
-          CORR=$(curl -sf -H "X-Correlation-ID: ci-test-001" http://localhost:8080/echo | jq -r '.correlation_id')
-          if [ "$CORR" == "ci-test-001" ]; then
-            echo "PASS: correlation ID propagates"
-          else
-            echo "FAIL: correlation ID dropped"; FAILURES=1
-          fi
-
-          # Test 6: Fault tolerance - kill a pod, service survives
-          kubectl delete pod -l app=gateway-ops-app -n sgc
-          sleep 3
-          if curl -sf http://localhost:8080/health > /dev/null; then
-            echo "PASS: service survives pod loss"
-          else
-            echo "FAIL: service unavailable after pod deletion"; FAILURES=1
-          fi
-
+          EXPECTED_BUILD=${{ github.event.workflow_run.run_number }} \
+            BASE_URL=http://localhost:8080 \
+            bash scripts/sgc-smoke.sh
+          RESULT=$?
           kill $PORT_FORWARD_PID
-
-          if [ $FAILURES -ne 0 ]; then
-            echo "::error::SGC smoke tests failed - aborting launch"
-            exit 1
-          fi
-          echo "All SGC smoke tests passed. Safe arrival on the other side."
+          exit $RESULT
 
       - name: Post-failure forensics
         if: failure()
