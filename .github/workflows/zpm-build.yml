@@ -1,0 +1,80 @@
+# zpm-build.yml
+# Atlantis ZPM (Zero Point Module) = power source that energizes the build.
+# Builds the container image with full provenance (package/build/commit),
+# validates it locally, and publishes it via artifact for downstream workflows.
+
+name: ZPM Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  zpm-build:
+    name: ZPM Build (energize)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract provenance metadata
+        id: provenance
+        run: |
+          echo "package-name=gateway-ops" >> "$GITHUB_OUTPUT"
+          echo "build-number=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "commit-sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image with provenance
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          load: true
+          tags: gateway-ops-app:ci-${{ github.run_number }}
+          build-args: |
+            PACKAGE_NAME=${{ steps.provenance.outputs.package-name }}
+            BUILD_NUMBER=${{ steps.provenance.outputs.build-number }}
+            COMMIT_SHA=${{ steps.provenance.outputs.commit-sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify provenance burned into image
+        run: |
+          docker run --rm -d -p 5000:5000 --name zpm-check gateway-ops-app:ci-${{ github.run_number }}
+          sleep 5
+          RESPONSE=$(curl -sf http://localhost:5000/version)
+          echo "$RESPONSE" | jq .
+          # Assert the User-Agent string matches the expected provenance format
+          EXPECTED="gateway-ops/${{ github.run_number }} (${{ github.sha }})"
+          ACTUAL=$(echo "$RESPONSE" | jq -r '.user_agent')
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Provenance mismatch. Expected [$EXPECTED], got [$ACTUAL]"
+            docker stop zpm-check
+            exit 1
+          fi
+          echo "Provenance verified: $ACTUAL"
+          docker stop zpm-check
+
+      - name: Export image artifact
+        run: |
+          docker save gateway-ops-app:ci-${{ github.run_number }} \
+            -o gateway-ops-ci-${{ github.run_number }}.tar
+          gzip gateway-ops-ci-${{ github.run_number }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-ops-image-${{ github.run_number }}
+          path: gateway-ops-ci-${{ github.run_number }}.tar.gz
+          retention-days: 7
