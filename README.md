@@ -2,6 +2,11 @@
 
 > "Through the gate lies a world of infinite possibilities."
 
+![ZPM Build](https://github.com/calionestevar/gateway-ops/actions/workflows/zpm-build.yml/badge.svg)
+![Prometheus Launch](https://github.com/calionestevar/gateway-ops/actions/workflows/prometheus-launch.yml/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Stargate Universe](https://img.shields.io/badge/Fandom-Stargate-purple.svg)](https://stargate.fandom.com/)
+
 One push provisions AWS infrastructure and deploys to EKS Fargate. Safety gates (Iris), routing intelligence (DHD), and automated validation (SGC) ensure nothing travels through unchecked.
 
 This project bridges Terraform + Kubernetes automation, designed to demonstrate cloud-native test infrastructure architecture for senior QA/Test Infrastructure roles. Part of the Nexus/Orion portfolio series inspired by science fiction and fantasy universes.
