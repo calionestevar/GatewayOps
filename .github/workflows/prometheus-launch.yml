@@ -51,13 +51,15 @@ jobs:
 
       - name: Patch image tag for CI deploy
         run: |
-          cd k8s
-          kustomize edit set image gateway-ops-app=${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }} || \
-          sed -i "s|image: .*|image: ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }}|" gate-deployment.yaml
+          cd k8s/overlays/ci
+          kustomize edit set image \
+            gateway-ops-app=${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }}
+          echo "--- resulting kustomization.yaml ---"
+          cat kustomization.yaml
 
       - name: Launch through the gate (deploy via Kustomize)
         run: |
-          kubectl apply -k k8s/
+          kubectl apply -k k8s/overlays/ci/
           kubectl rollout status deployment/gate-deployment -n sgc --timeout=120s
 
       - name: SGC Smoke Tests (shared suite - same as local)
