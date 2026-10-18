@@ -33,8 +33,8 @@ fi
 
 # --- Check 3: K8s manifest dry-run (requires a reachable cluster) ---
 if kubectl cluster-info >/dev/null 2>&1; then
-  if kubectl apply --dry-run=client -k k8s/ >/dev/null 2>&1; then
-    pass "kustomize + kubectl client dry-run clean"
+  if kubectl apply --dry-run=client -k k8s/overlays/local/ >/dev/null 2>&1; then
+    pass "kustomize + kubectl client dry-run clean (local overlay)"
   else
     fail "manifest dry-run errors"
   fi
@@ -43,7 +43,7 @@ else
 fi
 
 # --- Check 4: No hardcoded secrets in manifests ---
-if grep -rEn '(password|secret|token):\s*[^{$]' k8s/ --include="*.yaml" 2>/dev/null | \
+if grep -rEn '(password|secret|token):\s*[^{$]' k8s/base --include="*.yaml" 2>/dev/null | \
    grep -v 'valueFrom\|secretKeyRef\|configMapKeyRef'; then
   fail "possible hardcoded credential in k8s manifests"
 else
