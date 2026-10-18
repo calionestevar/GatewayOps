@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gate-deployment
+  namespace: sgc
+  labels:
+    app: gateway-ops-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway-ops-app
+  template:
+    metadata:
+      labels:
+        app: gateway-ops-app
+    spec:
+      containers:
+      - name: app
+        image: gateway-ops-app:v1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: dhd-config
+              key: environment
+        - name: GREETING
+          valueFrom:
+            configMapKeyRef:
+              name: dhd-config
+              key: greeting
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
