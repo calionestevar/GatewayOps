@@ -62,23 +62,6 @@ jobs:
           kubectl apply -k k8s/overlays/ci/
           kubectl rollout status deployment/gate-deployment -n sgc --timeout=120s
 
-      - name: Debug GREETING injection
-        run: |
-          kubectl exec -n sgc deploy/gate-deployment -- env | grep GREETING || echo "GREETING not found in pod"
-
-      - name: Debug / endpoint response
-        run: |
-          kubectl port-forward svc/gate-service 8080:80 -n sgc &
-          PORT_FORWARD_PID=$!
-          sleep 5
-          echo "=== Raw response ==="
-          curl -s http://localhost:8080/ || echo "FAILED"
-          kill $PORT_FORWARD_PID
-
-      - name: Debug ConfigMap existence
-        run: |
-          kubectl get configmap dhd-config -n sgc -o yaml
-          
       - name: SGC Smoke Tests (with extended stabilization)
         run: |
           kubectl port-forward svc/gate-service 8080:80 -n sgc &
