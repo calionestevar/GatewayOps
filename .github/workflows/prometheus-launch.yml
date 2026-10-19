@@ -62,14 +62,25 @@ jobs:
           kubectl apply -k k8s/overlays/ci/
           kubectl rollout status deployment/gate-deployment -n sgc --timeout=120s
 
-      - name: SGC Smoke Tests (shared suite - same as local)
+      - name: SGC Smoke Tests (with extended stabilization)
         run: |
           kubectl port-forward svc/gate-service 8080:80 -n sgc &
           PORT_FORWARD_PID=$!
-          sleep 5
+          
+          # Poll until health endpoint responds
+          echo "Waiting for gateway to become healthy..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+              echo "Gateway healthy after $i seconds"
+              break
+            fi
+            sleep 2
+          done
+          
           EXPECTED_BUILD=${{ github.event.workflow_run.run_number }} \
             BASE_URL=http://localhost:8080 \
             bash scripts/sgc-smoke.sh
+          
           RESULT=$?
           kill $PORT_FORWARD_PID
           exit $RESULT
