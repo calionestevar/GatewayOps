@@ -3,6 +3,9 @@
 # SGC = Stargate Command (SG-1). Post-deployment checkpoint:
 # verify safe arrival on the other side of the wormhole before
 # reporting success. Exits non-zero on ANY failure.
+#
+# Assertions parse JSON with jq - never grep raw response bodies.
+# Serialization whitespace is NOT part of the API contract.
 
 set -euo pipefail
 
@@ -14,20 +17,28 @@ FAILURES=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILURES=$((FAILURES + 1)); }
 
+# Extract a JSON field; returns empty string on any error.
+field() {
+  local path="$1" url="$2"
+  curl -sf "${url}" 2>/dev/null | jq -r "${path} // \"\"" 2>/dev/null || echo ""
+}
+
 echo "=== SGC Smoke Tests - targeting ${BASE_URL} ==="
 
 # --- Test 1: Health endpoint ---
-if curl -sf "${BASE_URL}/health" | grep -q '"status": "healthy"'; then
+STATUS=$(field '.status' "${BASE_URL}/health")
+if [ "$STATUS" == "healthy" ]; then
   pass "health endpoint responsive"
 else
-  fail "health endpoint not responsive"
+  fail "health endpoint: expected status='healthy', observed '${STATUS}'"
 fi
 
-# --- Test 2: Comtrya handshake (Altairan greeting via ConfigMap) ---
-if curl -sf "${BASE_URL}/" | grep -q '"greeting": "Comtrya!"'; then
-  pass "Comtrya handshake verified (dhd-config ConfigMap wiring intact)"
+# --- Test 2: Comtrya handshake (Altairan greeting via dhd-config) ---
+GREETING=$(field '.greeting' "${BASE_URL}/")
+if [ "$GREETING" == "Comtrya!" ]; then
+  pass "Comtrya handshake verified"
 else
-  fail "greeting missing - check dhd-config ConfigMap"
+  fail "greeting: expected 'Comtrya!', observed '${GREETING}'"
 fi
 
 # --- Test 3: Build provenance survived deployment ---
@@ -69,10 +80,11 @@ fi
 
 # --- Summary ---
 echo ""
-echo "=== SGC Results: $((FAILURES == 0 ? 1 : 0))-line summary ==="
 if [ "$FAILURES" -ne 0 ]; then
+  echo "=== SGC Results: ${FAILURES} failure(s) ==="
   echo "::error::${FAILURES} smoke test(s) failed - unscheduled offworld activation"
   exit 1
 fi
 
-echo "All SGC smoke tests passed. Comtrya - safe arrival confirmed."
+echo "=== SGC Results: all checks passed ==="
+echo "Comtrya - safe arrival confirmed."
