@@ -60,9 +60,9 @@ jobs:
       - name: Lantean Shield (rendered manifest hardening)
         run: |
           chmod +x scripts/lantean-shield.sh
-          OVERLAY=k8s/overlays/ci DEBUG=1 bash scripts/lantean-shield.sh
+          OVERLAY=k8s/overlays/ci bash scripts/lantean-shield.sh
         env:
-          DEBUG: "1"
+          DEBUG: ${{ vars.SHIELD_DEBUG || '0' }}
 
       - name: Launch through the gate (deploy via Kustomize)
         run: |
