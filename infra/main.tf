@@ -63,9 +63,31 @@ resource "aws_eks_cluster" "gate" {
 
   vpc_config {
     subnet_ids = module.vpc.private_subnet_ids
+    endpoint_private_access = true
+    endpoint_public_access  = true
+    public_access_cidrs     = ["10.0.0.0/8", "172.16.0.0/12"]  # Private ranges only
+  }
+  
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key = aws_kms_key.eks_secrets.arn
+    }
+  }
+  
+  logging {
+    cluster_logging {
+      enabled_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+    }
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
+}
+
+resource "aws_kms_key" "eks_secrets" {
+  description             = "EKS cluster secrets encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
 }
 
 # --- Fargate profile: travel without managing nodes ---
