@@ -3,6 +3,7 @@
 > "Through the gate lies a world of infinite possibilities."
 
 ![ZPM Build](https://github.com/calionestevar/GatewayOps/actions/workflows/zpm-build.yml/badge.svg)
+![Asgard Scan](https://github.com/calionestevar/GatewayOps/actions/workflows/asgard-scan.yml/badge.svg)
 ![Prometheus Launch](https://github.com/calionestevar/GatewayOps/actions/workflows/prometheus-launch.yml/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Stargate Universe](https://img.shields.io/badge/Fandom-Stargate-purple.svg)](https://stargate.fandom.com/)
@@ -106,7 +107,7 @@ docker build --build-arg PACKAGE_NAME=gateway-ops \
 kind load docker-image gateway-ops-app:v1.0.0 --name gateway-ops
 
 # Deploy via Kustomize (handles dependency ordering)
-kubectl apply -k k8s/
+kubectl apply -k k8s/overlays/local
 
 # Verify pods
 kubectl get pods -n sgc
