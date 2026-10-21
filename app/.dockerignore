@@ -1,0 +1,19 @@
+# Never copy local state, secrets, or dev artifacts into the image
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Repo metadata
+.git/
+.gitignore
+*.md
+
+# Local overrides
+*.local

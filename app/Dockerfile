@@ -13,7 +13,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy only application code, not the whole context
+COPY app.py .
 
 RUN useradd --create-home appuser
 USER appuser
