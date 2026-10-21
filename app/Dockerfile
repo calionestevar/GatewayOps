@@ -11,7 +11,8 @@ ENV PACKAGE_NAME=${PACKAGE_NAME} \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip uninstall -y setuptools
 
 # Copy only application code, not the whole context
 COPY app.py .
