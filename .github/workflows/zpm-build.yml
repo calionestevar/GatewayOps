@@ -1,7 +1,10 @@
 # zpm-build.yml
 # Atlantis ZPM (Zero Point Module) = power source that energizes the build.
-# Builds with provenance, verifies it, and publishes to GHCR for
-# downstream workflows to launch.
+# Builds with provenance, verifies the contract, and publishes to GHCR.
+#
+# Provenance values are defined ONCE in workflow-level env and consumed by
+# both the build args and the verification assertion. Duplicating them
+# caused a drift bug during the SHA-tag migration.
 
 name: ZPM Build
 
@@ -14,6 +17,10 @@ on:
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/gateway-ops-app
   IMAGE_TAG: ${{ github.sha }}
+  # --- Provenance contract: <package>/<build> (<sha>) ---
+  PACKAGE_NAME: gateway-ops
+  BUILD_NUMBER: ${{ github.run_number }}
+  COMMIT_SHA: ${{ github.sha }}
 
 permissions:
   contents: read
@@ -45,25 +52,54 @@ jobs:
           load: true
           tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           build-args: |
-            PACKAGE_NAME=gateway-ops
-            BUILD_NUMBER=${{ github.run_number }}
-            COMMIT_SHA=${{ github.sha }}
+            PACKAGE_NAME=${{ env.PACKAGE_NAME }}
+            BUILD_NUMBER=${{ env.BUILD_NUMBER }}
+            COMMIT_SHA=${{ env.COMMIT_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Verify provenance burned into image
         run: |
-          docker run --rm -d -p 5000:5000 --name zpm-check ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          sleep 5
+          docker run --rm -d -p 5000:5000 --name zpm-check \
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+          # Poll rather than fixed sleep - container startup time varies
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:5000/version >/dev/null 2>&1 && break
+            sleep 1
+          done
+
           RESPONSE=$(curl -sf http://localhost:5000/version)
           echo "$RESPONSE" | jq .
-          EXPECTED="gateway-ops/${{ env.IMAGE_TAG }} (${{ github.sha }})"
+
+          # Single source of truth: same env vars that fed the build args
+          EXPECTED="${PACKAGE_NAME}/${BUILD_NUMBER} (${COMMIT_SHA})"
           ACTUAL=$(echo "$RESPONSE" | jq -r '.user_agent')
+
           if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "::error::Provenance mismatch. Expected [$EXPECTED], got [$ACTUAL]"
+            echo "::error::Provenance mismatch."
+            echo "::error::  expected: [$EXPECTED]"
+            echo "::error::  observed: [$ACTUAL]"
             docker stop zpm-check
             exit 1
           fi
+
+          # Assert the individual fields too - catches partial threading
+          # (e.g. Dockerfile passes PACKAGE_NAME but drops COMMIT_SHA)
+          for field in package build_number commit_sha; do
+            OBSERVED=$(echo "$RESPONSE" | jq -r ".${field}")
+            case "$field" in
+              package)      WANT="$PACKAGE_NAME" ;;
+              build_number) WANT="$BUILD_NUMBER" ;;
+              commit_sha)   WANT="$COMMIT_SHA" ;;
+            esac
+            if [ "$OBSERVED" != "$WANT" ]; then
+              echo "::error::Field '${field}' mismatch: expected [${WANT}], observed [${OBSERVED}]"
+              docker stop zpm-check
+              exit 1
+            fi
+          done
+
           echo "Provenance verified: $ACTUAL"
           docker stop zpm-check
 
