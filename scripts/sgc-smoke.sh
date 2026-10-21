@@ -12,6 +12,7 @@ set -euo pipefail
 # --- Configuration ---
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 EXPECTED_BUILD="${EXPECTED_BUILD:-}"   # Optional: assert specific build number
+EXPECTED_SHA="${EXPECTED_SHA:-}"
 FAILURES=0
 
 pass() { echo "PASS: $1"; }
@@ -56,6 +57,16 @@ if [ -n "$VERSION_RESPONSE" ]; then
     fail "build number mismatch: expected ${EXPECTED_BUILD}, got ${BUILD_NUM}"
   else
     [ -n "$EXPECTED_BUILD" ] && pass "deployed build matches expected (${EXPECTED_BUILD})"
+  fi
+
+  # --- Test 3c: Assert deployed commit matches pipeline SHA ---
+  if [ -n "$EXPECTED_SHA" ]; then
+    DEPLOYED_SHA=$(echo "$VERSION_JSON" | jq -r '.commit_sha // ""')
+    if [ "$DEPLOYED_SHA" == "$EXPECTED_SHA" ]; then
+      pass "deployed commit matches pipeline SHA (${EXPECTED_SHA:0:7})"
+    else
+      fail "commit mismatch: expected ${EXPECTED_SHA}, observed ${DEPLOYED_SHA}"
+    fi
   fi
 
   # --- Test 4: User-Agent instrumentation format ---
