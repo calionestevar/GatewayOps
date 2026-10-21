@@ -9,12 +9,18 @@
 # gate itself.
 #
 # Prerequisites: kubectl, yq (v4+), jq
+#
+# Env vars:
+#   OVERLAY     - Path to kustomize overlay (default: k8s/overlays/ci)
+#   ALLOWED_REGISTRIES - Approved image registry prefix (default: ghcr.io/)
+#   DEBUG       - Set to "1" for verbose diagnostic output
 
 set -euo pipefail
 
 OVERLAY="${OVERLAY:-k8s/overlays/ci}"
 ALLOWED_REGISTRIES="${ALLOWED_REGISTRIES:-ghcr.io/}"
 FAILURES=0
+DEBUG="${DEBUG:-0}" # Set DEBUG=1 for verbose output
 
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILURES=$((FAILURES + 1)); }
@@ -31,16 +37,31 @@ require jq
 
 echo "=== Lantean Shield - inspecting rendered manifests from ${OVERLAY} ==="
 
+if [ "$DEBUG" == "1" ]; then
+  echo "[DEBUG] Rendering kustomization..."
+fi
+
 if ! RENDERED=$(kubectl kustomize "$OVERLAY" 2>&1); then
   echo "::error::kustomize render failed:"
   echo "$RENDERED"
   exit 2
 fi
 
-# Convert the multi-document YAML stream into a JSON stream for
-# structural queries. Never pattern-match rendered YAML as text.
+if [ "$DEBUG" == "1" ]; then
+  echo "[DEBUG] Rendered YAML (first 50 lines):"
+  echo "$RENDERED" | head -50 | sed 's/^/[YAML] /'
+fi
+
+# Convert YAML to JSON stream
 JSON=$(echo "$RENDERED" | yq -o=json '.')
 
+if [ "$DEBUG" == "1" ]; then
+  echo "[DEBUG] JSON conversion successful"
+  echo "[DEBUG] Deployment container securityContext:"
+  echo "$JSON" | jq -r 'select(.kind=="Deployment") | .spec.template.spec.containers[] | "\(.name): allowPrivilegeEscalation=\(.securityContext.allowPrivilegeEscalation // "NULL")"' | sed 's/^/[JSON] /'
+fi
+
+# Define the workload selector (Deployment, StatefulSet, DaemonSet)
 WORKLOAD='select(.kind | test("^(Deployment|StatefulSet|DaemonSet)$"))'
 
 # --- 1: No floating :latest tags ---
@@ -70,8 +91,24 @@ if [ -z "$NOT_ROOT" ]; then pass "all workloads declare runAsNonRoot: true"
 else fail "missing runAsNonRoot: ${NOT_ROOT}"; fi
 
 # --- 5: Privilege escalation disabled ---
+if [ "$DEBUG" == "1" ]; then
+  echo "[DEBUG] Checking allowPrivilegeEscalation..."
+  echo "[DEBUG] Container specs:"
+  echo "$JSON" | jq -r "$WORKLOAD | .spec.template.spec.containers[] | "\(.name): \(.securityContext.allowPrivilegeEscalation // "NULL")"" 2>&1 || echo "[DEBUG] jq extraction failed"
+fi
+
 ESC=$(echo "$JSON" | jq -r "$WORKLOAD | .spec.template.spec.containers[]
   | select((.securityContext.allowPrivilegeEscalation // true) != false) | .name")
+
+if [ "$DEBUG" == "1" ]; then
+  echo "[DEBUG] ESC variable content: '$ESC'"
+  if [ -n "$ESC" ]; then
+    echo "[DEBUG] Containers with privilege escalation: ${ESC}"
+  else
+    echo "[DEBUG] No containers flagged for privilege escalation"
+  fi
+fi
+
 if [ -z "$ESC" ]; then pass "allowPrivilegeEscalation disabled on all containers"
 else fail "privilege escalation permitted: ${ESC}"; fi
 
