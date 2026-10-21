@@ -5,6 +5,11 @@
 #   hadolint - does the Dockerfile violate container build practice?
 #   checkov  - does the Terraform violate cloud hardening policy?
 #   trivy    - does the built image carry known CVEs?
+#
+# Note: gitleaks runs via its container image rather than gitleaks-action,
+# which does not support the workflow_run trigger. Table output goes to the
+# job log instead of SARIF - code scanning upload is unreliable under
+# workflow_run contexts and v3 of the uploader is deprecated.
 
 name: Asgard Scan
 
@@ -16,11 +21,11 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/gateway-ops-app
+  IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
 
 permissions:
   contents: read
   packages: read
-  security-events: write
 
 jobs:
   asgard-scan:
@@ -31,11 +36,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Pin to the exact commit the build scanned - workflow_run
+          # would otherwise check out the default branch head
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            zricethezav/gitleaks:latest detect \
+            --source /src \
+            --no-banner \
+            --redact \
+            --verbose
 
       - name: Dockerfile lint (hadolint)
         uses: hadolint/hadolint-action@v3.1.0
@@ -61,15 +75,8 @@ jobs:
       - name: Container vulnerability scan (trivy)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
-          format: sarif
-          output: trivy-results.sarif
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
-
-      - name: Upload SARIF to code scanning
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
