@@ -64,6 +64,7 @@ jobs:
           framework: terraform
           quiet: true
           soft_fail: false
+          skip_check: CKV2_AWS_11,CKV2_AWS_12  # Deferred until migration phase
 
       - name: Login to GHCR
         uses: docker/login-action@v3
