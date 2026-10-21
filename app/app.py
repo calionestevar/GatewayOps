@@ -14,6 +14,18 @@ BUILD_NUMBER = os.environ.get("BUILD_NUMBER", "local")
 COMMIT_SHA   = os.environ.get("COMMIT_SHA", "unknown")
 
 
+# --- Allowed internal targets for /dial-out ---
+# Explicit allowlist. Never accept an arbitrary URL here: an open
+# target parameter is a server-side request forgery (SSRF) vector.
+ALLOWED_TARGETS = {"/echo", "/health", "/version", "/"}
+SELF_BASE_URL = os.environ.get("SELF_BASE_URL", "http://localhost:5000")
+
+
+# Only these headers are reflected by /echo. Reflecting all request
+# headers risks leaking credentials injected by proxies or service meshes.
+REFLECTED_HEADERS = {"x-correlation-id", "user-agent"}
+
+
 def build_user_agent() -> str:
     """<package name>/<build number> (<commit hash>)"""
     return f"{PACKAGE_NAME}/{BUILD_NUMBER} ({COMMIT_SHA})"
@@ -56,12 +68,19 @@ def version():
 
 @app.route("/echo")
 def echo():
-    """Downstream service stub - reflects headers it receives."""
+    """Downstream service stub - reflects the headers it was sent."""
     correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+
+    received = {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() in REFLECTED_HEADERS
+    }
+
     return jsonify({
         "correlation_id": correlation_id,
         "received_user_agent": request.headers.get("User-Agent"),
-        "received_headers": dict(request.headers),
+        "received_headers": received,
         "pod": os.environ.get("HOSTNAME", socket.gethostname()),
     }), 200
 
@@ -69,16 +88,36 @@ def echo():
 @app.route("/dial-out")
 def dial_out():
     """
-    Makes an outbound call carrying the instrumented User-Agent.
-    Defaults to calling this service's own /echo endpoint, so the
-    propagation can be verified hermetically - no external dependency.
+    Makes an outbound call carrying the instrumented User-Agent,
+    proving the provenance header propagates on egress.
+
+    The target is constrained to a relative path from an allowlist.
+    Absolute URLs are rejected - see ALLOWED_TARGETS.
     """
-    target = request.args.get("target", "http://localhost:5000/echo")
-    resp = requests.get(
-        target,
-        headers={"User-Agent": USER_AGENT},
-        timeout=5,
-    )
+    target_path = request.args.get("target", "/echo")
+
+    if target_path not in ALLOWED_TARGETS:
+        return jsonify({
+            "error": "target not permitted",
+            "allowed_targets": sorted(ALLOWED_TARGETS),
+        }), 400
+
+    target = f"{SELF_BASE_URL}{target_path}"
+
+    try:
+        resp = requests.get(
+            target,
+            headers={"User-Agent": USER_AGENT},
+            timeout=5,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        return jsonify({
+            "sent_user_agent": USER_AGENT,
+            "target": target,
+            "error": f"upstream call failed: {type(exc).__name__}",
+        }), 502
+
     return jsonify({
         "sent_user_agent": USER_AGENT,
         "target": target,
