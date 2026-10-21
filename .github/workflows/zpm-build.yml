@@ -13,6 +13,7 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/gateway-ops-app
+  IMAGE_TAG: ${{ github.sha }}
 
 permissions:
   contents: read
@@ -42,7 +43,7 @@ jobs:
         with:
           context: ./app
           load: true
-          tags: ${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           build-args: |
             PACKAGE_NAME=gateway-ops
             BUILD_NUMBER=${{ github.run_number }}
@@ -52,11 +53,11 @@ jobs:
 
       - name: Verify provenance burned into image
         run: |
-          docker run --rm -d -p 5000:5000 --name zpm-check ${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          docker run --rm -d -p 5000:5000 --name zpm-check ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           sleep 5
           RESPONSE=$(curl -sf http://localhost:5000/version)
           echo "$RESPONSE" | jq .
-          EXPECTED="gateway-ops/${{ github.run_number }} (${{ github.sha }})"
+          EXPECTED="gateway-ops/${{ env.IMAGE_TAG }} (${{ github.sha }})"
           ACTUAL=$(echo "$RESPONSE" | jq -r '.user_agent')
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "::error::Provenance mismatch. Expected [$EXPECTED], got [$ACTUAL]"
@@ -67,4 +68,4 @@ jobs:
           docker stop zpm-check
 
       - name: Push to GHCR
-        run: docker push ${{ env.IMAGE_NAME }}:${{ github.run_number }}
+        run: docker push ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}

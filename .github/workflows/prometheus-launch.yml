@@ -7,7 +7,7 @@ name: Prometheus Launch
 
 on:
   workflow_run:
-    workflows: ["ZPM Build"]
+    workflows: ["Asgard Scan"]
     types: [completed]
     branches: [main]
 
@@ -37,7 +37,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull verified image
-        run: docker pull ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }}
+        run: docker pull ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
 
       - name: Create ephemeral cluster (Atlantis rises)
         uses: helm/kind-action@v1
@@ -47,15 +47,20 @@ jobs:
 
       - name: Load image into Kind
         run: |
-          kind load docker-image ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }} --name gateway-ops-ci
+          kind load docker-image ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }} --name gateway-ops-ci
 
       - name: Patch image tag for CI deploy
         run: |
           cd k8s/overlays/ci
           kustomize edit set image \
-            gateway-ops-app=${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.run_number }}
+            gateway-ops-app=${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
           echo "--- resulting kustomization.yaml ---"
           cat kustomization.yaml
+
+      - name: Lantean Shield (rendered manifest hardening)
+        run: |
+          chmod +x scripts/lantean-shield.sh
+          OVERLAY=k8s/overlays/ci bash scripts/lantean-shield.sh
 
       - name: Launch through the gate (deploy via Kustomize)
         run: |
@@ -77,7 +82,7 @@ jobs:
             sleep 2
           done
           
-          EXPECTED_BUILD=${{ github.event.workflow_run.run_number }} \
+          EXPECTED_SHA=${{ github.event.workflow_run.head_sha }} \
             BASE_URL=http://localhost:8080 \
             bash scripts/sgc-smoke.sh
           
