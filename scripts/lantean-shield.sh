@@ -94,11 +94,18 @@ else fail "missing runAsNonRoot: ${NOT_ROOT}"; fi
 if [ "$DEBUG" == "1" ]; then
   echo "[DEBUG] Checking allowPrivilegeEscalation..."
   echo "[DEBUG] Container specs:"
-  echo "$JSON" | jq -r "$WORKLOAD | .spec.template.spec.containers[] | "\(.name): \(.securityContext.allowPrivilegeEscalation // "NULL")"" 2>&1 || echo "[DEBUG] jq extraction failed"
+  echo "$JSON" | jq -r "$WORKLOAD"' | .spec.template.spec.containers[]
+    | "\(.name): allowPrivilegeEscalation=\(.securityContext.allowPrivilegeEscalation)"' \
+    2>&1 || echo "[DEBUG] jq extraction failed"
 fi
 
+# NOTE: do NOT use jq's alternative operator (//) here. jq treats BOTH
+# null and false as "empty", so `false // true` evaluates to `true`,
+# collapsing a correctly-set false into the fallback value. Compare
+# directly against false: an absent field yields null, which is
+# != false and therefore correctly flagged as a violation.
 ESC=$(echo "$JSON" | jq -r "$WORKLOAD | .spec.template.spec.containers[]
-  | select((.securityContext.allowPrivilegeEscalation // true) != false) | .name")
+  | select(.securityContext.allowPrivilegeEscalation != false) | .name")
 
 if [ "$DEBUG" == "1" ]; then
   echo "[DEBUG] ESC variable content: '$ESC'"
