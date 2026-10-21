@@ -5,3 +5,4 @@ resources:
   - dhd-config.yaml
   - gate-deployment.yaml
   - gate-service.yaml
+  - gate-networkpolicy.yaml

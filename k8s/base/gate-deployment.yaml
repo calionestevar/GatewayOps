@@ -15,12 +15,26 @@ spec:
       labels:
         app: gateway-ops-app
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: app
         image: gateway-ops-app:v1.0.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5000
+          name: http
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
         env:
         - name: ENVIRONMENT
           valueFrom:
@@ -46,12 +60,18 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 5000
+            port: http
           initialDelaySeconds: 10
           periodSeconds: 15
         readinessProbe:
           httpGet:
             path: /health
-            port: 5000
+            port: http
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
