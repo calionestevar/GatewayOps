@@ -1,0 +1,75 @@
+# asgard-scan.yml
+# The Asgard (SG-1) - advanced allies whose technology exceeds our own.
+# Four independent sensors, four threat classes:
+#   gitleaks - did a credential leak into the repository?
+#   hadolint - does the Dockerfile violate container build practice?
+#   checkov  - does the Terraform violate cloud hardening policy?
+#   trivy    - does the built image carry known CVEs?
+
+name: Asgard Scan
+
+on:
+  workflow_run:
+    workflows: ["ZPM Build"]
+    types: [completed]
+    branches: [main]
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/gateway-ops-app
+
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  asgard-scan:
+    name: Asgard Scan (four sensors)
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dockerfile lint (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+          failure-threshold: warning
+
+      - name: IaC policy scan (checkov)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra
+          framework: terraform
+          quiet: true
+          soft_fail: false
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Container vulnerability scan (trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
