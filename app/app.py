@@ -1,7 +1,7 @@
 import os
 import socket
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 import requests
 from flask import Flask, jsonify, request
@@ -39,7 +39,7 @@ def health():
     return jsonify({
         "status": "healthy",
         "pod": os.environ.get("HOSTNAME", socket.gethostname()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }), 200
 
 
