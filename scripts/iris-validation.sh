@@ -65,6 +65,17 @@ else
   fail "Dockerfile missing USER directive - container would run as root"
 fi
 
+# --- Check 7: Shell script static analysis ---
+if command -v shellcheck >/dev/null 2>&1; then
+  if shellcheck --severity=warning scripts/*.sh; then
+    pass "shell scripts pass shellcheck"
+  else
+    fail "shellcheck findings in scripts/ - see output above"
+  fi
+else
+  echo "SKIP: shellcheck not installed locally"
+fi
+
 echo ""
 if [ "$FAILURES" -ne 0 ]; then
   echo "::error::Iris remains CLOSED - ${FAILURES} validation failure(s). Nothing ships."
