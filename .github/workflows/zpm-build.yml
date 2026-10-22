@@ -45,6 +45,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lint (ruff)
+        run: |
+          pip install ruff
+          ruff check app/
+
+      - name: Unit tests with coverage
+        run: |
+          pip install -r app/requirements.txt pytest pytest-cov
+          pytest app/tests/ --cov=app/app.py --cov-report=term
+
       - name: Build image with provenance
         uses: docker/build-push-action@v6
         with:
