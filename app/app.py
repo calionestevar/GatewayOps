@@ -1,7 +1,7 @@
 import os
 import socket
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import requests
 from flask import Flask, jsonify, request
