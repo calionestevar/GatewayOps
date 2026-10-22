@@ -59,6 +59,11 @@ jobs:
           pip install -r app/requirements.txt pytest pytest-cov
           pytest app/tests/ --cov=app/app.py --cov-report=term
 
+      - name: Lint workflows (actionlint)
+        run: |
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
       - name: Build image with provenance
         uses: docker/build-push-action@v6
         with:
