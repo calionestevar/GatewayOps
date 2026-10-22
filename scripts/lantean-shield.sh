@@ -55,12 +55,6 @@ fi
 # Convert YAML to JSON stream
 JSON=$(echo "$RENDERED" | yq -o=json '.')
 
-if [ "$DEBUG" == "1" ]; then
-  echo "[DEBUG] JSON conversion successful"
-  echo "[DEBUG] Deployment container securityContext:"
-  echo "$JSON" | jq -r 'select(.kind=="Deployment") | .spec.template.spec.containers[] | "\(.name): allowPrivilegeEscalation=\(.securityContext.allowPrivilegeEscalation // "NULL")"' | sed 's/^/[JSON] /'
-fi
-
 # Define the workload selector (Deployment, StatefulSet, DaemonSet)
 WORKLOAD='select(.kind | test("^(Deployment|StatefulSet|DaemonSet)$"))'
 
