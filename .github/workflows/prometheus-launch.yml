@@ -64,6 +64,13 @@ jobs:
         env:
           DEBUG: ${{ vars.SHIELD_DEBUG || '0' }}
 
+      - name: Schema-validate rendered manifests (kubeconform)
+        run: |
+          kubectl kustomize k8s/overlays/ci > rendered.yaml
+          docker run --rm -i ghcr.io/yannh/kubeconform:latest \
+            -strict -ignore-missing-schemas \
+            - < rendered.yaml
+
       - name: Launch through the gate (deploy via Kustomize)
         run: |
           kubectl apply -k k8s/overlays/ci/
