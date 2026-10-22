@@ -187,6 +187,12 @@ Smoke test include:
 - Resource limit compliance
 - "Comtrya!" greeting endpoint verification
 
+## Test Coverage
+
+Unit tests cover the endpoint contracts, with dedicated regression tests pinning the `/dial-out` allowlist (the SSRF fix from [LESSONS_LEARNED.md](./LESSONS_LEARNED.md)). Coverage is reported in the ZPM Build job summary for each run.
+
+This is a live metric — the [ZPM Build](.github/workflows/zpm-build.yml) badge above reflects whether tests pass; click it to see the current coverage percentage from the latest run.
+
 ## Related Projects
 - **orion-validate** - Statistical QA framework for non-deterministic AI systems (published on PyPI)
 - **NexusQA** - Test automation core framework with multi-franchise component naming
