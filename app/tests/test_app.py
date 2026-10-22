@@ -3,9 +3,6 @@
 The /dial-out allowlist is the security-critical surface: an open
 target parameter is an SSRF vector. These tests pin the contract.
 """
-import os
-import importlib
-
 import pytest
 
 
