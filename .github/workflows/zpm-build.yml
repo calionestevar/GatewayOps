@@ -57,8 +57,9 @@ jobs:
       - name: Unit tests with coverage
         run: |
           pip install -r app/requirements.txt -r app/requirements-dev.txt
+          export PYTHONPATH=$PWD:$PYTHONPATH
           pytest app/tests/ \
-            --cov=app \
+            --cov=app.app \
             --cov-report=term-missing \
             --cov-report=json:coverage.json
 
