@@ -76,6 +76,13 @@ else
   echo "SKIP: shellcheck not installed locally"
 fi
 
+# --- Check 8: Ensure lint is installed
+if command -v ruff >/dev/null 2>&1; then
+  ruff check app/ && pass "ruff: no lint findings" || fail "ruff findings in app/"
+else
+  echo "SKIP: ruff not installed locally"
+fi
+
 echo ""
 if [ "$FAILURES" -ne 0 ]; then
   echo "::error::Iris remains CLOSED - ${FAILURES} validation failure(s). Nothing ships."
