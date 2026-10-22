@@ -61,7 +61,7 @@ if [ -n "$VERSION_RESPONSE" ]; then
 
   # --- Test 3c: Assert deployed commit matches pipeline SHA ---
   if [ -n "$EXPECTED_SHA" ]; then
-    DEPLOYED_SHA=$(echo "$VERSION_JSON" | jq -r '.commit_sha // ""')
+    DEPLOYED_SHA=$(echo "$VERSION_RESPONSE" | jq -r '.commit_sha // ""')
     if [ "$DEPLOYED_SHA" == "$EXPECTED_SHA" ]; then
       pass "deployed commit matches pipeline SHA (${EXPECTED_SHA:0:7})"
     else
